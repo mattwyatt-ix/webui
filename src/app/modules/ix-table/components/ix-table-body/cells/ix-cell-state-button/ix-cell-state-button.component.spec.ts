@@ -13,6 +13,7 @@ import { DialogService } from 'app/modules/dialog/dialog.service';
 import { IxIconHarness } from 'app/modules/ix-icon/ix-icon.harness';
 import { IxCellStateButtonComponent } from 'app/modules/ix-table/components/ix-table-body/cells/ix-cell-state-button/ix-cell-state-button.component';
 import { selectJobs } from 'app/modules/jobs/store/job.selectors';
+import { signal } from '@angular/core';
 
 interface TestTableData {
   state: JobState;
@@ -64,12 +65,11 @@ describe('IxCellStateButtonComponent', () => {
     spectator.component.getJob = (row) => row.job;
     spectator.component.uniqueRowTag = () => '';
     spectator.component.ariaLabels = () => ['Label 1', 'Label 2'];
-    spectator.component.job.set({
+    spectator.component.job = signal({
       id: 123456,
       logs_excerpt: 'completed',
       state: JobState.Success,
     } as Job);
-    spectator.component.ngOnInit();
     spectator.detectChanges();
 
     loader = TestbedHarnessEnvironment.loader(spectator.fixture);
