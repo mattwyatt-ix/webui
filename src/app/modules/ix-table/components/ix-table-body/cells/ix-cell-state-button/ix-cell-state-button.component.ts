@@ -1,6 +1,6 @@
 import { NgClass } from '@angular/common';
 import {
-  ChangeDetectionStrategy, Component, effect, inject, OnInit, signal,
+  ChangeDetectionStrategy, Component, computed, inject, Signal,
 } from '@angular/core';
 import { MatButton } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -9,12 +9,12 @@ import { UntilDestroy, untilDestroyed } from '@ngneat/until-destroy';
 import { Store } from '@ngrx/store';
 import { TranslateService, TranslateModule } from '@ngx-translate/core';
 import {
-  catchError, EMPTY, filter, Observable, tap,
+  catchError, EMPTY
 } from 'rxjs';
+import { toObservable } from '@angular/core/rxjs-interop';
 import { JobState } from 'app/enums/job-state.enum';
 import { observeJob } from 'app/helpers/operators/observe-job.operator';
 import { helptextGlobal } from 'app/helptext/global-helptext';
-import { ApiJobMethod, ApiJobResponse } from 'app/interfaces/api/api-job-directory.interface';
 import { Job } from 'app/interfaces/job.interface';
 import { ShowLogsDialog } from 'app/modules/dialog/components/show-logs-dialog/show-logs-dialog.component';
 import { DialogService } from 'app/modules/dialog/dialog.service';
@@ -48,51 +48,30 @@ interface RowState {
     TestDirective,
   ],
 })
-export class IxCellStateButtonComponent<T> extends ColumnComponent<T> implements OnInit {
+export class IxCellStateButtonComponent<T> extends ColumnComponent<T> {
   matDialog: MatDialog = inject(MatDialog);
   translate: TranslateService = inject(TranslateService);
   dialogService: DialogService = inject(DialogService);
   errorHandler: ErrorHandlerService = inject(ErrorHandlerService);
 
-  private readonly rowUpdateEffect = effect(() => {
-    this.setupRow();
-  });
-
   getJob: (row: T) => Job | null;
-  private store$: Store<JobSlice> = inject<Store<JobSlice>>(Store<JobSlice>);
-  job = signal<Job | null>(null);
-  jobUpdates$: Observable<Job<ApiJobResponse<ApiJobMethod>>>;
-  state = signal<JobState | null>(null);
+  private store$: Store<JobSlice> = inject<Store<JobSlice>>(Store);
+  job: Signal<Job | null> = computed(() => {
+    const row = this.row() as Job | null;
+    const update = this.store$.selectSignal(selectJob(row?.id))();
+    return update || row || null;
+  })
 
-  ngOnInit(): void {
-    this.setupRow();
-  }
+  state: Signal<JobState | null> = computed(() => {
+    const update = this.store$.selectSignal(selectJob(this.job()?.id))();
+    if (update) {
+      return update.state;
+    } else {
+      return this.getValue(this.row()) as JobState;
+    }
+  })
 
-  private setupRow(): void {
-    if (this.getJob) {
-      const job = this.getJob(this.row());
-      this.job.set(job);
-      if (job?.state) {
-        this.state.set(job.state);
-      }
-    }
-    if (!this.job()) {
-      this.state.set(this.value as JobState);
-      return;
-    }
-    const jobId = this.getJob(this.row())?.id;
-    if (!jobId) {
-      return;
-    }
-
-    this.jobUpdates$ = this.store$.select(selectJob(jobId)).pipe(
-      filter((job) => !!job),
-      tap((job) => {
-        this.job.set(job);
-        this.state.set(job.state);
-      }),
-    ) as Observable<Job<ApiJobResponse<ApiJobMethod>>>;
-  }
+  job$ = toObservable(this.job);
 
   getWarnings?: (row: T) => unknown[];
 
@@ -153,7 +132,7 @@ export class IxCellStateButtonComponent<T> extends ColumnComponent<T> implements
 
   private showJobDialog(): void {
     this.dialogService.jobDialog(
-      this.jobUpdates$.pipe(observeJob()),
+      this.job$.pipe(observeJob()),
       {
         title: this.translate.instant('Task is running'),
         canMinimize: true,
