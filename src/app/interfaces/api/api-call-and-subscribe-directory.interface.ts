@@ -1,6 +1,7 @@
 import { App } from 'app/interfaces/app.interface';
 import { ContainerImage } from 'app/interfaces/container-image.interface';
 import { Group } from 'app/interfaces/group.interface';
+import { PeriodicSnapshotTask } from 'app/interfaces/periodic-snapshot-task.interface';
 import { Pool } from 'app/interfaces/pool.interface';
 import { User } from 'app/interfaces/user.interface';
 import { VirtualMachine } from 'app/interfaces/virtual-machine.interface';
@@ -17,6 +18,7 @@ export interface ApiCallAndSubscribeEventDirectory {
   'app.image.query': { response: ContainerImage };
   'app.query': { response: App };
   'virt.instance.query': { response: VirtualizationInstance };
+  'pool.snapshottask.query': { response: PeriodicSnapshotTask };
 }
 
 export type ApiCallAndSubscribeMethod = keyof ApiCallAndSubscribeEventDirectory;
