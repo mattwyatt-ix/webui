@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, effect, input, OnInit, inject } from '@angular/core';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { AbstractControl, NonNullableFormBuilder, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
 import { UntilDestroy, untilDestroyed } from '@ngneat/until-destroy';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { of } from 'rxjs';
@@ -10,6 +10,7 @@ import { IxFieldsetComponent } from 'app/modules/forms/ix-forms/components/ix-fi
 import { IxInputComponent } from 'app/modules/forms/ix-forms/components/ix-input/ix-input.component';
 import { IxRadioGroupComponent } from 'app/modules/forms/ix-forms/components/ix-radio-group/ix-radio-group.component';
 import { IxTextareaComponent } from 'app/modules/forms/ix-forms/components/ix-textarea/ix-textarea.component';
+import { matchOthersFgValidator } from 'app/modules/forms/ix-forms/validators/password-validation/password-validation';
 import { UserFormStore, UserStigPasswordOption } from 'app/pages/credentials/users/user-form/user.store';
 
 @UntilDestroy()
@@ -40,10 +41,20 @@ export class AuthSectionComponent implements OnInit {
 
   form = this.formBuilder.group({
     password: ['', [Validators.required]],
+    password_confirm: [''],
     password_disabled: [false],
     ssh_password_enabled: [false],
     sshpubkey: [''],
     stig_password: [UserStigPasswordOption.DisablePassword],
+  }, {
+    validators: [
+      this.sshAccessValidator.bind(this),
+      matchOthersFgValidator(
+        'password_confirm',
+        ['password'],
+        this.translate.instant('Passwords do not match'),
+      ),
+    ],
   });
 
   protected readonly tooltips = {
@@ -51,6 +62,7 @@ export class AuthSectionComponent implements OnInit {
     one_time_password: helptextUsers.oneTimePasswordTooltip,
     password: helptextUsers.passwordTooltip,
     password_edit: helptextUsers.passwordTooltip,
+    password_confirm: helptextUsers.passwordConfirmTooltip,
     sshpubkey: helptextUsers.publicKeyTooltip,
   };
 
@@ -83,6 +95,7 @@ export class AuthSectionComponent implements OnInit {
       },
     });
 
+
     effect(() => {
       if (this.editingUser()) {
         this.form.patchValue({
@@ -97,7 +110,12 @@ export class AuthSectionComponent implements OnInit {
       if (!this.sshAccess()) {
         this.form.patchValue({ ssh_password_enabled: false });
         this.form.controls.password_disabled.enable({ emitEvent: false });
+      } else if (this.form.value.password_disabled) {
+        // If SSH access is enabled but password is disabled, SSH password authentication should be false
+        this.form.patchValue({ ssh_password_enabled: false });
       }
+      // Trigger validation update when SSH access changes
+      this.form.updateValueAndValidity();
     });
 
     effect(() => {
@@ -106,15 +124,47 @@ export class AuthSectionComponent implements OnInit {
         this.form.patchValue({ password_disabled: false });
       }
     });
+
+    effect(() => {
+      this.setupPasswordValidation();
+    });
   }
 
   ngOnInit(): void {
     this.setPasswordFieldRelations();
+    this.setupPasswordValidation();
+  }
 
+  private setupPasswordValidation(): void {
     if (this.editingUser()) {
       this.form.controls.password.removeValidators([Validators.required]);
       this.form.controls.password.reset();
+      this.form.controls.password_confirm.clearValidators();
+      this.form.controls.password_confirm.reset();
+    } else {
+      this.form.controls.password_confirm.setValidators([Validators.required]);
     }
+    this.form.controls.password_confirm.updateValueAndValidity();
+  }
+
+  private sshAccessValidator(formGroup: AbstractControl): ValidationErrors | null {
+    if (!this.sshAccess()) {
+      return null; // SSH access is not enabled, no validation needed
+    }
+
+    const sshPasswordEnabled = formGroup.get('ssh_password_enabled')?.value;
+    const sshPublicKey = formGroup.get('sshpubkey')?.value;
+    const hasSshKey = sshPublicKey && sshPublicKey.trim().length > 0;
+
+    if (!sshPasswordEnabled && !hasSshKey) {
+      return {
+        sshAccessRequired: {
+          message: this.translate.instant('SSH access requires either password authentication or an SSH public key'),
+        },
+      };
+    }
+
+    return null;
   }
 
   private setPasswordFieldRelations(): void {
@@ -123,9 +173,11 @@ export class AuthSectionComponent implements OnInit {
     ).subscribe((isDisabled) => {
       if (isDisabled) {
         this.form.controls.password.disable();
+        this.form.controls.password_confirm.disable();
         this.form.controls.ssh_password_enabled.disable({ emitEvent: false });
       } else {
         this.form.controls.password.enable();
+        this.form.controls.password_confirm.enable();
         this.form.controls.ssh_password_enabled.enable({ emitEvent: false });
       }
     });
